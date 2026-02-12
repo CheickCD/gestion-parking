@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Gestion de Parking</title>
+    <style>
+/* ======================
+   STYLES GLOBAUX
+====================== */
+body {
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+    margin: 0;
+    padding: 20px;
+}
+
+.container {
+    max-width: 800px;
+    margin: 0 auto;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.1);
+}
+
+h1 {
+    text-align: center;
+    color: #2c3e50;
+}
+
+h3 {
+    color: #34495e;
+    margin-bottom: 5px;
+}
+
+/* ======================
+   ALIGNEMENTS
+====================== */
+.center-block {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.flex-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 20px;
+}
+
+.flex-box {
+    flex: 1;
+}
+
+/* ======================
+   INPUTS & BOUTONS
+====================== */
+input[type="number"],
+input[type="text"] {
+    padding: 8px;
+    width: 200px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+button {
+    padding: 8px 14px;
+    background-color: #2980b9;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+button:hover {
+    background-color: #3498db;
+}
+
+/* ======================
+   TABLES
+====================== */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+
+th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: center;
+}
+
+th {
+    background-color: #2980b9;
+    color: white;
+}
+
+tbody tr:nth-child(even) {
+    background-color: #f2f2f2;
+}
+
+/* ======================
+   AUTRES
+====================== */
+hr {
+    margin: 20px 0;
+}
+
+#etat {
+    font-weight: bold;
+    margin: 10px 0;
+    color: #27ae60;
+}
+
+p.tarif {
+    font-size: 16px;
+    color: #e67e22;
+    font-weight: bold;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+pre#ticket {
+    background-color: #ecf0f1;
+    padding: 10px;
+    border-radius: 5px;
+    font-family: monospace;
+    white-space: pre-wrap;
+}
+    </style>
+</head>
+
+<body>
+<div class="container">
+
+    <h1>🚗 Gestion de Parking</h1>
+
+    <p class="tarif">💰 Tarification : <strong>100 FCFA / 30 minutes</strong></p>
+
+    <!-- 🔽 CENTRAGE NOMBRE DE PLACES -->
+    <div class="center-block">
+        <label>Nombre total de places :</label><br><br>
+        <input type="number" id="totalPlaces" placeholder="Ex : 10">
+        <button onclick="initialiser()">Initialiser</button>
+    </div>
+
+    <hr>
+
+    <!-- 🔽 ENTRÉE & SORTIE SUR LA MÊME LIGNE -->
+    <div class="flex-row">
+
+        <div class="flex-box">
+            <h3>Entrée du véhicule</h3>
+            <input type="text" id="immatEntree" placeholder="Immatriculation">
+            <button onclick="entree()">Entrer</button>
+        </div>
+
+        <div class="flex-box">
+            <h3>Sortie du véhicule</h3>
+            <input type="text" id="immatSortie" placeholder="Immatriculation">
+            <button onclick="sortie()">Sortir</button>
+        </div>
+
+    </div>
+
+    <hr>
+    
+    <p id="etat"></p>
+    <div id="parking"></div>
+
+    <h3>🚘 Véhicules présents</h3>
+    <table>
+        <tr>
+            <th>Immatriculation</th>
+            <th>Heure d’entrée</th>
+        </tr>
+        <tbody id="listeEntrees"></tbody>
+    </table>
+
+    <h3>🚪 Véhicules sortis</h3>
+    <table>
+        <tr>
+            <th>Immatriculation</th>
+            <th>Heure d’entrée</th>
+            <th>Heure de sortie</th>
+            <th>Montant</th>
+        </tr>
+        <tbody id="listeSorties"></tbody>
+    </table>
+
+    <h3>Paiement</h3>
+    <p id="montant"></p>
+    <button onclick="payer()">Payer</button>
+
+    <h3>🎫 Ticket</h3>
+    <pre id="ticket"></pre>
+    <button onclick="imprimerTicket()">Imprimer le ticket (2 copies)</button>
+
+</div>
+<script>
+ /* =======================
+   COMMUNICATION AVEC CGI
+======================= */
+
+function envoyer(action, immat = "") {
+    let url = `/cgi-bin/parking.exe?action=${action}`;
+    if (immat) url += `&immat=${immat}`;
+
+    fetch(url)
+        .then(res => res.json())
+        .then(data => {
+            // Message état
+            document.getElementById("etat").innerText = data.message;
+
+            // Affichage des places
+            let html = "";
+            data.places.forEach((etat, i) => {
+                html += `
+                <div style="
+                    display:inline-block;
+                    width:100px;
+                    margin:5px;
+                    padding:10px;
+                    color:white;
+                    background:${etat ? '#e74c3c' : '#2ecc71'};
+                ">
+                    Place ${i + 1}
+                </div>`;
+            });
+            document.getElementById("parking").innerHTML = html;
+
+            // Mise à jour véhicules présents
+            const tbodyEntrees = document.getElementById("listeEntrees");
+            tbodyEntrees.innerHTML = "";
+            const tbodySorties = document.getElementById("listeSorties");
+            tbodySorties.innerHTML = "";
+
+            if (data.vehicules) {
+                data.vehicules.forEach(v => {
+                    if (v.aPayer === 0) {
+                        // Véhicules encore à l'intérieur
+                        tbodyEntrees.innerHTML += `
+                            <tr>
+                                <td>${v.immat}</td>
+                                <td>${v.heure}</td>
+                            </tr>`;
+                    } else {
+                        // Véhicules sortis mais non payés
+                        const maintenant = new Date();
+                        tbodySorties.innerHTML += `
+                            <tr>
+                                <td>${v.immat}</td>
+                                <td>${v.heure}</td>
+                                <td>${maintenant.toLocaleTimeString()}</td>
+                                <td>${v.montant} FCFA</td>
+                            </tr>`;
+                    }
+                });
+            }
+        })
+        .catch(err => {
+            console.error("Erreur CGI :", err);
+        });
+}
+
+/* =======================
+   INITIALISATION
+======================= */
+
+function initialiser() {
+    const total = document.getElementById("totalPlaces").value;
+    if (!total) return alert("Entrez un nombre de places");
+
+    fetch(`/cgi-bin/parking.exe?action=init&places=${total}`)
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById("etat").innerText = d.message;
+            envoyer("etat");
+        });
+}
+
+/* =======================
+   ENTRÉE
+======================= */
+
+function entree() {
+    const immat = document.getElementById("immatEntree").value.trim();
+    if (!immat) return alert("Immatriculation requise");
+
+    envoyer("entree", immat);
+}
+
+/* =======================
+   SORTIE
+======================= */
+
+function sortie() {
+    const immat = document.getElementById("immatSortie").value.trim();
+    if (!immat) return alert("Immatriculation requise");
+
+    fetch(`/cgi-bin/parking.exe?action=sortie&immat=${immat}`)
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("etat").innerText = data.message;
+            envoyer("etat", "");
+
+            // Extraire le montant du message
+            let montantMatch = data.message.match(/(\d+)/);
+            let montant = montantMatch ? montantMatch[0] : "0";
+
+            // Ticket
+            document.getElementById("ticket").innerText =
+                "===== TICKET PARKING =====\n\n" +
+                "Immatriculation : " + immat + "\n" +
+                "Montant à payer : " + montant + " FCFA\n" +
+                "Merci de votre visite.\n";
+        });
+}
+
+/* =======================
+   PAIEMENT
+======================= */
+
+function payer() {
+    const ticketText = document.getElementById("ticket").innerText;
+    if (!ticketText) return alert("Aucun ticket sélectionné");
+
+    // Récupérer l'immatriculation depuis le ticket
+    const immatMatch = ticketText.match(/Immatriculation : (\S+)/);
+    if (!immatMatch) return alert("Impossible de trouver l'immatriculation");
+    const immat = immatMatch[1];
+
+    fetch(`/cgi-bin/parking.exe?action=payer&immat=${immat}`)
+        .then(res => res.json())
+        .then(data => {
+            alert(data.message);
+            document.getElementById("ticket").innerText = "";
+            envoyer("etat");
+        });
+}
+
+/* =======================
+   IMPRESSION
+======================= */
+
+function imprimerTicket() {
+    const contenu = document.getElementById("ticket").innerText;
+    if (!contenu) {
+        alert("Aucun ticket à imprimer");
+        return;
+    }
+    const fenetre = window.open("", "", "width=600,height=400");
+    fenetre.document.write("<pre>" + contenu + "</pre>");
+    fenetre.document.close();
+    fenetre.print();
+}
+
+/* =======================
+   CHARGEMENT INITIAL
+======================= */
+
+envoyer("etat");
+
+</script>
+
+</body>
+</html>
